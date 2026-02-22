@@ -109,7 +109,7 @@ Post findings to Discord:
 2. [Second action]
 3. [Third action]
 
-@aleksandar Please review these findings and let me know which solutions to implement.
+@human Please review these findings and let me know which solutions to implement.
 ```
 
 ## Metrics to Track
