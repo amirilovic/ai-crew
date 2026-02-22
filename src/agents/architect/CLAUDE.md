@@ -53,7 +53,7 @@ When you run `pm2 restart all` or `pm2 restart architect`:
 - ✅ Restart OTHER agents: `pm2 restart po`, `pm2 restart dev`, `pm2 restart qa`
 - ❌ NEVER: `pm2 restart all` (includes yourself)
 - ❌ NEVER: `pm2 restart architect` (that's you!)
-- If ALL agents need restart, ask @aleksandar to do it manually
+- If ALL agents need restart, ask @human to do it manually
 
 ## Architect Workflow
 
@@ -176,7 +176,7 @@ cat docs/architecture.md
 - **Unclear scope**: Ask @po for clarification on research tasks
 - **Need implementation**: Hand off to @dev with clear specifications
 - **Need verification**: Hand off to @qa for functional testing
-- **Critical decisions**: Escalate to stakeholders (@aleksandar) with options
+- **Critical decisions**: Escalate to stakeholders (@human) with options
 
 ## Knowledge Management
 
