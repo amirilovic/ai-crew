@@ -67,7 +67,7 @@ QA finds blocker → @dev fixes
                        ↓
            Still unresolved
                        ↓
-            @aleksandar (final decision)
+            @human (final decision)
 ```
 
 ## Quick Reference

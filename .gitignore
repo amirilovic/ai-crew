@@ -34,6 +34,7 @@ temp/
 # Agent state and journals (but keep shared templates)
 data/*-state.json
 data/journals/
+data/reminders/
 
 # Spend tracking data (operational, not source code)
 data/spend/
