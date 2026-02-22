@@ -12,7 +12,7 @@ This document describes all agents in the team. Reference this to understand who
 | **Role** | Product Owner - translates requirements into tickets |
 | **Discord Role** | @po |
 | **Primary Channel** | #development |
-| **Escalates To** | @aleksandar (human) |
+| **Escalates To** | @human (human) |
 
 **Responsibilities:**
 - Gather and clarify requirements from stakeholders
@@ -131,7 +131,7 @@ Dev creates PR → Architect reviews + QA tests → Merge
 | Technical question | @dev |
 | Research needed | @architect |
 | PR ready for testing | @qa |
-| Human decision needed | @aleksandar |
+| Human decision needed | @human |
 
 ---
 
@@ -178,4 +178,4 @@ When a new agent is added:
 | @dev | Developer | Implementation, technical issues |
 | @architect | Architect | Research, architecture, complex PRs |
 | @qa | QA | Functional testing, PR verification |
-| @aleksandar | Human | Escalations, decisions |
+| @human | Human | Escalations, decisions |

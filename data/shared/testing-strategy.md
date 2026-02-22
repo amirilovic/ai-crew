@@ -237,7 +237,7 @@ Unlike traditional test pyramids, we prioritize **integration tests** because th
 ## Questions for Team Discussion
 
 1. Do we agree integration tests should be our primary focus?
-2. What E2E tests are critical for our projects (jrd, ccpa-telegram)?
+2. What E2E tests are critical for our projects (jrd, your-project)?
 3. What testing frameworks should we use?
 4. Should we retroactively add tests to existing code, or just new work?
 5. How do we handle testing for refactors (existing code has no tests)?
