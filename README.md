@@ -1,7 +1,7 @@
-# Agent Dev Crew
+# AI Crew
 
-[![CI](https://github.com/amirilovic/agent-dev-crew/actions/workflows/ci.yml/badge.svg)](https://github.com/amirilovic/agent-dev-crew/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/badge/coverage-30%25%20min-brightgreen)](https://github.com/amirilovic/agent-dev-crew)
+[![CI](https://github.com/your-username/ai-crew/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/ai-crew/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-30%25%20min-brightgreen)](https://github.com/your-username/ai-crew)
 
 A system of autonomous AI agents (Product Owner, Developer, QA, Architect) that collaborate via Discord and GitHub. Built on the Claude Agent SDK.
 
@@ -41,8 +41,8 @@ Modern LLMs can self-organize and collaborate effectively when given access to s
 
 ```bash
 # Clone the repository
-git clone https://github.com/amirilovic/agent-dev-crew.git
-cd agent-dev-crew
+git clone https://github.com/your-username/ai-crew.git
+cd ai-crew
 
 # Install dependencies
 pnpm install
@@ -100,7 +100,7 @@ pm2 restart all
 ```
 Dev ──────┐
           │
-QA  ──────┼──► PO ──────► Human (@aleksandar)
+QA  ──────┼──► PO ──────► Human (@human)
           │
 Architect─┘
 ```
@@ -129,7 +129,7 @@ Agents respond to:
 ## Project Structure
 
 ```
-agent-dev-crew/
+ai-crew/
 ├── src/
 │   ├── agents/              # Agent configurations
 │   │   ├── po/CLAUDE.md     # PO instructions
