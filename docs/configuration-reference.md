@@ -14,7 +14,7 @@ This document describes all configuration options available for agents in `src/a
     "baseUrl": "https://openrouter.ai/api",
     "apiKey": "OPENROUTER_API_KEY",
     "headers": {
-      "HTTP-Referer": "https://github.com/amirilovic/agent-dev-crew",
+      "HTTP-Referer": "https://github.com/your-username/ai-crew",
       "X-Title": "Agent Dev Crew"
     }
   },

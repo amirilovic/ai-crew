@@ -40,7 +40,7 @@ In the agent's `config.json` (e.g., `src/agents/dev/config.json`), add the `api`
     "baseUrl": "https://openrouter.ai/api",
     "apiKey": "OPENROUTER_API_KEY",
     "headers": {
-      "HTTP-Referer": "https://github.com/amirilovic/agent-dev-crew",
+      "HTTP-Referer": "https://github.com/your-username/ai-crew",
       "X-Title": "Agent Dev Crew"
     }
   }
