@@ -228,7 +228,7 @@ Message IDs are available in the `discord_read_channel` response:
   "messages": [
     {
       "id": "1471958558642929757",  // <-- Use this for messageId
-      "author": "amirilovic#0",
+      "author": "username#0",
       "content": "Create a ticket for dark mode"
     }
   ]
