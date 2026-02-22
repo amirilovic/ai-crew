@@ -1,0 +1,11 @@
+{
+  "reminders": [
+    {
+      "id": "08c1acc6-3cda-4b0e-b4c9-c088c2556e19",
+      "message": "Daily Retro: Review yesterday's Discord messages in development. Analyze delivery process for issues. Identify communication gaps, workflow problems, technical issues, and process improvements. Propose solutions to @aleksandar. Use /daily-retro skill.",
+      "when": "0 2 * * *",
+      "recurring": true,
+      "createdAt": "2026-02-15T17:33:16.419Z"
+    }
+  ]
+}

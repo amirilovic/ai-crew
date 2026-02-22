@@ -1,0 +1,29 @@
+{
+  "name": "qa",
+  "displayName": "QA",
+  "model": "claude-sonnet-4-20250514",
+  "channels": [
+    {
+      "type": "discord",
+      "role": "qa",
+      "primary": "development",
+      "canRead": ["development", "discovery"],
+      "canWrite": ["development", "discovery"],
+      "triggers": {
+        "onMention": true,
+        "onChannelMessage": false
+      }
+    }
+  ],
+  "cron": [
+    {
+      "schedule": "*/10 * * * *",
+      "task": "check_prs"
+    }
+  ],
+  "limits": {
+    "maxDailyCostUsd": 100,
+    "cooldownMinutes": 5
+  },
+  "escalatesTo": "po"
+}

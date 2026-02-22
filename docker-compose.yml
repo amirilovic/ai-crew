@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  agent-po:
+    build: .
+    container_name: agent-po
+    environment:
+      - AGENT_NAME=po
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - DISCORD_GUILD_ID=${DISCORD_GUILD_ID}
+      - MAX_DAILY_COST_USD=${MAX_DAILY_COST_USD:-25}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      - ./logs:/app/logs
+      - ./workspace:/workspace
+    restart: unless-stopped
+    networks:
+      - agent-network
+
+  agent-dev:
+    build: .
+    container_name: agent-dev
+    environment:
+      - AGENT_NAME=dev
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - DISCORD_GUILD_ID=${DISCORD_GUILD_ID}
+      - MAX_DAILY_COST_USD=${MAX_DAILY_COST_USD:-25}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      - ./logs:/app/logs
+      - ./workspace:/workspace
+    restart: unless-stopped
+    networks:
+      - agent-network
+    depends_on:
+      - agent-po
+
+networks:
+  agent-network:
+    driver: bridge

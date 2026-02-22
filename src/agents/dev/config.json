@@ -1,0 +1,29 @@
+{
+  "name": "dev",
+  "displayName": "Developer",
+  "model": "claude-sonnet-4-20250514",
+  "channels": [
+    {
+      "type": "discord",
+      "role": "dev",
+      "primary": "development",
+      "canRead": ["development", "discovery"],
+      "canWrite": ["development", "discovery"],
+      "triggers": {
+        "onMention": true,
+        "onChannelMessage": false
+      }
+    }
+  ],
+  "cron": [
+    {
+      "schedule": "*/15 * * * *",
+      "task": "check_board"
+    }
+  ],
+  "limits": {
+    "maxDailyCostUsd": 200,
+    "cooldownMinutes": 0
+  },
+  "escalatesTo": "po"
+}

@@ -1,0 +1,24 @@
+{
+  "name": "architect",
+  "displayName": "Architect",
+  "model": "claude-opus-4-20250514",
+  "channels": [
+    {
+      "type": "discord",
+      "role": "architect",
+      "primary": "development",
+      "canRead": ["development", "discovery"],
+      "canWrite": ["development", "discovery"],
+      "triggers": {
+        "onMention": true,
+        "onChannelMessage": false
+      }
+    }
+  ],
+  "cron": [],
+  "limits": {
+    "maxDailyCostUsd": 150,
+    "cooldownMinutes": 5
+  },
+  "escalatesTo": "po"
+}

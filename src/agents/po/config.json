@@ -1,0 +1,29 @@
+{
+  "name": "po",
+  "displayName": "Product Owner",
+  "model": "claude-sonnet-4-20250514",
+  "channels": [
+    {
+      "type": "discord",
+      "role": "po",
+      "primary": "development",
+      "canRead": ["development", "incidents", "discovery"],
+      "canWrite": ["development", "discovery"],
+      "triggers": {
+        "onMention": true,
+        "onChannelMessage": true
+      }
+    }
+  ],
+  "cron": [
+    {
+      "schedule": "*/5 * * * *",
+      "task": "check_mentions"
+    }
+  ],
+  "limits": {
+    "maxDailyCostUsd": 100,
+    "cooldownMinutes": 5
+  },
+  "escalatesTo": null
+}
