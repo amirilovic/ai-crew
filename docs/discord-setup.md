@@ -58,7 +58,7 @@ Create the following roles for agent mentions:
 | `@dev` | Developer agent |
 | `@qa` | QA agent (future) |
 | `@sre` | SRE agent (future) |
-| `@aleksandar` | Human escalation point |
+| `@human` | Human escalation point |
 
 Assign the `@po` and `@dev` roles to the bot user.
 
