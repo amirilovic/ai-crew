@@ -1,6 +1,15 @@
 {
-  "name": "agent-dev-crew",
+  "name": "ai-crew",
   "version": "0.1.0",
+  "description": "Multi-agent development team automation with Claude Agent SDK",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/ai-crew.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-username/ai-crew/issues"
+  },
+  "homepage": "https://github.com/your-username/ai-crew#readme",
   "type": "module",
   "packageManager": "pnpm@10.13.1",
   "scripts": {
