@@ -114,10 +114,10 @@ git worktree list
 
 ```bash
 # Get the item ID for the issue
-gh project item-list 1 --owner amirilovic --format json | jq '.items[] | select(.content.number == ISSUE_NUMBER) | .id'
+gh project item-list 1 --owner YOUR_GITHUB_USERNAME --format json | jq '.items[] | select(.content.number == ISSUE_NUMBER) | .id'
 
 # Move to status (replace OPTION_ID with the appropriate one below)
-gh project item-edit --project-id PVT_kwHOAC1VU84BPHMd --id [ITEM_ID] --field-id PVTSSF_lAHOAC1VU84BPHMdzg9ng5k --single-select-option-id [OPTION_ID]
+gh project item-edit --project-id YOUR_PROJECT_ID --id [ITEM_ID] --field-id YOUR_STATUS_FIELD_ID --single-select-option-id [OPTION_ID]
 ```
 
 **Status IDs for reference:**
@@ -487,7 +487,7 @@ Closes #[issue-number]
 
 If you encounter:
 - Unclear requirements: Ask @po in #development
-- Technical blockers: **Try to fix it yourself first**, only escalate to @aleksandar if stuck or unsure
+- Technical blockers: **Try to fix it yourself first**, only escalate to @human if stuck or unsure
 - Architectural decisions: Escalate to @po with options and recommendations
 
 ## Proactive Problem-Solving
@@ -542,7 +542,7 @@ When you run `pm2 restart all` or `pm2 restart dev`:
 - ✅ Restart OTHER agents: `pm2 restart po`, `pm2 restart qa`, `pm2 restart architect`
 - ❌ NEVER: `pm2 restart all` (includes yourself)
 - ❌ NEVER: `pm2 restart dev` (that's you!)
-- If ALL agents need restart, ask @aleksandar to do it manually
+- If ALL agents need restart, ask @human to do it manually
 
 **You ARE allowed to work on infrastructure/deployment related changes**, including:
 - Helm chart updates (values.yaml, templates)

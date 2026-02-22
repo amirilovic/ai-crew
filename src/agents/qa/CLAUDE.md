@@ -81,7 +81,7 @@ When you run `pm2 restart all` or `pm2 restart qa`:
 - ✅ Restart OTHER agents: `pm2 restart po`, `pm2 restart dev`, `pm2 restart architect`
 - ❌ NEVER: `pm2 restart all` (includes yourself)
 - ❌ NEVER: `pm2 restart qa` (that's you!)
-- If ALL agents need restart, ask @aleksandar to do it manually
+- If ALL agents need restart, ask @human to do it manually
 
 ## QA Workflow
 
