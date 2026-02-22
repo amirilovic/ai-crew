@@ -49,7 +49,7 @@ Modern LLMs can self-organize and collaborate effectively when given access to s
 │                       │  [Process]          │                                │
 │                       └──────────┬──────────┘                                │
 │                                  │                                           │
-│                                  │ Escalate via Discord @aleksandar          │
+│                                  │ Escalate via Discord @human          │
 │                                  ▼                                           │
 │                          ┌──────────────┐                                    │
 │                          │    HUMAN     │                                    │
@@ -217,7 +217,7 @@ You are the ONLY agent who can escalate to Aleksandar.
 - A P1 incident requires human decision
 
 **How to escalate:**
-Post in #development and tag @aleksandar with:
+Post in #development and tag @human with:
 1. Clear summary of the situation
 2. What decision is needed
 3. Options if applicable
@@ -558,7 +558,7 @@ Send a message to a Discord channel.
 ## Guidelines
 
 - Keep messages concise
-- Use mentions (@dev, @qa, @sre, @po, @aleksandar) appropriately
+- Use mentions (@dev, @qa, @sre, @po, @human) appropriately
 - Use code blocks for code snippets
 - Use threads (replyTo) for ongoing discussions about specific topics
 ```
@@ -1082,7 +1082,7 @@ MAX_TOKENS_PER_RUN=100000
 - `@dev`
 - `@qa`
 - `@sre`
-- `@aleksandar` (human)
+- `@human` (human)
 
 ---
 
@@ -1131,7 +1131,7 @@ MAX_TOKENS_PER_RUN=100000
 ├─────────────────────────────────────────────────────────────┤
 │  HOW:                                                       │
 │  • Post in relevant channel                                 │
-│  • Tag @po (or @aleksandar if PO)                          │
+│  • Tag @po (or @human if PO)                          │
 │  • Include: situation, what's needed, recommendation        │
 └─────────────────────────────────────────────────────────────┘
 ```
