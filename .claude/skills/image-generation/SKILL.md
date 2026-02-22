@@ -11,10 +11,10 @@ Use `gen-image` CLI to generate images with OpenAI's gpt-image-1 model.
 
 ```bash
 # Basic image generation
-/Users/amirilovic/bin/gen-image "A cat wearing sunglasses"
+gen-image "A cat wearing sunglasses"
 
 # With options
-/Users/amirilovic/bin/gen-image -q low -s square -o /tmp "Your prompt"
+gen-image -q low -s square -o /tmp "Your prompt"
 ```
 
 ## Common Options
@@ -31,7 +31,7 @@ Use `gen-image` CLI to generate images with OpenAI's gpt-image-1 model.
 
 1. **Generate image:**
    ```bash
-   /Users/amirilovic/bin/gen-image -q low -s square -o /tmp "Your prompt"
+   gen-image -q low -s square -o /tmp "Your prompt"
    ```
 
 2. **Find the output file:**

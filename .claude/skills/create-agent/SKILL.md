@@ -185,7 +185,7 @@ mkdir -p data/journals/<agent-name>
 
 ### 3. Build the project
 ```bash
-cd /Users/amirilovic/Projects/agent-dev-crew && pnpm run build
+cd . && pnpm run build
 ```
 
 ### 4. Start the agent
