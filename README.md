@@ -1,9 +1,47 @@
 # AI Crew
 
-[![CI](https://github.com/your-username/ai-crew/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/ai-crew/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/badge/coverage-30%25%20min-brightgreen)](https://github.com/your-username/ai-crew)
+[![CI](https://github.com/amirilovic/ai-crew/actions/workflows/ci.yml/badge.svg)](https://github.com/amirilovic/ai-crew/actions/workflows/ci.yml)
 
 A system of autonomous AI agents (Product Owner, Developer, QA, Architect) that collaborate via Discord and GitHub. Built on the Claude Agent SDK.
+
+> **This is a template repository.** Fork it and use [Claude Code](https://claude.ai/code), [Codex](https://openai.com/index/codex/), or your favorite AI coding assistant to explore and adapt it to your needs.
+
+## Getting Started
+
+### 1. Fork This Repository
+
+**Don't clone directly** - fork first so you can customize freely:
+
+1. Click the **Fork** button at the top right of this page
+2. Clone your fork locally:
+   ```bash
+   git clone https://github.com/YOUR-USERNAME/ai-crew.git
+   cd ai-crew
+   ```
+
+### 2. Explore with AI
+
+This codebase is designed to be explored and customized with AI assistance. Open the repo with your preferred AI coding tool:
+
+**With Claude Code:**
+```bash
+claude .
+```
+
+**With Codex or other AI assistants:**
+Open the project and start asking questions like:
+- *"How does the agent system work?"*
+- *"Where are the agent instructions defined?"*
+- *"How do I add a new agent role?"*
+- *"How does Discord integration work?"*
+
+### 3. Customize for Your Use Case
+
+Common customizations:
+- **Agent personalities**: Edit `src/agents/*/CLAUDE.md` files
+- **Add new agents**: Copy an existing agent folder and modify
+- **Change workflows**: Update the cron schedules in `ecosystem.config.cjs`
+- **Integrate different tools**: Add MCP servers or modify Discord tools
 
 ## Overview
 
@@ -27,9 +65,7 @@ Modern LLMs can self-organize and collaborate effectively when given access to s
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## Quick Start
-
-### Prerequisites
+## Prerequisites
 
 - Node.js 20+
 - pnpm (`npm install -g pnpm`)
@@ -37,13 +73,9 @@ Modern LLMs can self-organize and collaborate effectively when given access to s
 - GitHub CLI (`brew install gh` or [cli.github.com](https://cli.github.com/))
 - Discord bot token and server
 
-### Installation
+## Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-username/ai-crew.git
-cd ai-crew
-
 # Install dependencies
 pnpm install
 
@@ -54,7 +86,7 @@ cp .env.example .env
 # See "Configuration" section below
 ```
 
-### Configuration
+## Configuration
 
 Create a `.env` file with:
 
@@ -67,7 +99,7 @@ DISCORD_GUILD_ID=your-guild-id
 MAX_DAILY_COST_USD=50.00
 ```
 
-### Build & Run
+## Build & Run
 
 ```bash
 # Build TypeScript
