@@ -43,6 +43,26 @@ Common customizations:
 - **Change workflows**: Update the cron schedules in `ecosystem.config.cjs`
 - **Integrate different tools**: Add MCP servers or modify Discord tools
 
+### 4. Add New Features with AI
+
+The easiest way to extend this system is to **ask your AI coding assistant** to add features for you. Examples:
+
+```
+"Add Slack integration so agents can communicate via Slack instead of Discord"
+
+"Add a new agent role called 'Designer' that reviews UI changes"
+
+"Integrate Jira instead of GitHub Projects for ticket tracking"
+
+"Add email notifications when PRs are merged"
+
+"Create a /deploy command that triggers a deployment pipeline"
+```
+
+The AI will explore the codebase, understand the existing patterns, and implement the feature following the same conventions. This is how the system is designed to be extended—through natural language requests, not manual coding.
+
+**Pro tip:** Be specific about your requirements. Instead of "add Slack", try "Add Slack integration using the Slack Web API, with a new MCP tool that mirrors the Discord tools functionality."
+
 ## Overview
 
 Modern LLMs can self-organize and collaborate effectively when given access to standard human collaboration tools (chat, kanban boards, code repos) without requiring explicit workflow orchestration code.
