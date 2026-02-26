@@ -15,10 +15,11 @@
       }
     }
   ],
-  "cron": [
+  "scheduledTasks": [
     {
+      "name": "check_prs",
       "schedule": "*/10 * * * *",
-      "task": "check_prs"
+      "prompt": "Time to check for PRs needing QA testing.\n\n## Steps:\n1. **List items in \"In Review\" column** on the project board\n2. **For each item with an open PR**, check if it needs QA testing\n3. **Check CI status first**: `gh pr checks {number}` - skip if failing\n4. **Read the linked issue** for acceptance criteria\n5. **Test the PR**:\n   - Checkout the PR: `gh pr checkout {number}`\n   - Run the app locally\n   - Use `agent-browser` to verify functionality works\n   - Test scroll behavior on mobile for layout changes\n   - Check tests exist and pass\n6. **Post QA results**: Comment on PR with verdict (pass/fail with evidence)\n7. **Notify in Discord**: Post outcome to #development\n\nIf nothing needs QA testing, wait silently - do NOT post saying you have nothing to do."
     }
   ],
   "limits": {

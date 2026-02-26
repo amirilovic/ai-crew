@@ -15,10 +15,11 @@
       }
     }
   ],
-  "cron": [
+  "scheduledTasks": [
     {
+      "name": "check_mentions",
       "schedule": "*/5 * * * *",
-      "task": "check_mentions"
+      "prompt": "Time to check Discord channels for anything needing your attention.\n\n## Steps:\n1. **Read #development** for any new requests, questions, or blockers from the team\n2. **Check the board** for tickets needing attention (stuck, unclear requirements)\n3. **Respond** to anything that needs your input\n\nIf nothing needs attention, just wait silently - do NOT post saying you have nothing to do."
     }
   ],
   "limits": {

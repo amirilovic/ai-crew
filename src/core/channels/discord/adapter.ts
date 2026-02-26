@@ -18,17 +18,19 @@ import * as path from 'path';
 import { getEnv } from '../../../config/environment.js';
 import { logger } from '../../../shared/logger.js';
 import { getDiscordConfig } from '../../../shared/types.js';
-import type {
-  ChannelAdapter,
-  ChannelAdapterConfig,
-  ChannelMessage,
-  ChannelMessageEvent,
-  ChannelEventHandler,
-  SendMessageOptions,
-  SendFileOptions,
-  ReadMessagesOptions,
-  AddReactionOptions,
-  SendMessageResult,
+import {
+  shouldRespondToMessage,
+  type ChannelAdapter,
+  type ChannelAdapterConfig,
+  type ChannelMessage,
+  type ChannelMessageEvent,
+  type ChannelEventHandler,
+  type SendMessageOptions,
+  type SendFileOptions,
+  type ReadMessagesOptions,
+  type AddReactionOptions,
+  type SendMessageResult,
+  type MessageSeenHandler,
 } from '../types.js';
 
 export class DiscordChannelAdapter implements ChannelAdapter {
@@ -38,6 +40,7 @@ export class DiscordChannelAdapter implements ChannelAdapter {
   private clientPromise: Promise<Client> | null = null;
   private config: ChannelAdapterConfig;
   private eventHandlers: Set<ChannelEventHandler> = new Set();
+  private messageSeenHandlers: Set<MessageSeenHandler> = new Set();
   private messageListener: ((message: Message) => void) | null = null;
 
   constructor(config: ChannelAdapterConfig) {
@@ -128,12 +131,20 @@ export class DiscordChannelAdapter implements ChannelAdapter {
 
     try {
       // Convert @rolename to <@&ROLE_ID> for proper Discord mentions
+      // Skip mentions inside code blocks, inline code, or blockquotes
       const guild = channel.guild;
-      const processedContent = options.content.replace(/@(\w+)/g, (match, roleName) => {
-        if (match.startsWith('@&')) return match;
-        const role = guild.roles.cache.find((r) => r.name.toLowerCase() === roleName.toLowerCase());
-        return role ? `<@&${role.id}>` : match;
-      });
+      const processedContent = options.content.replace(
+        /(```[\s\S]*?```|`[^`]+`|^>.*$)|@(\w+)/gm,
+        (match, protectedRegion, roleName) => {
+          // If it's a protected region, return unchanged
+          if (protectedRegion) return match;
+          // Otherwise, try to convert the mention
+          const role = guild.roles.cache.find(
+            (r) => r.name.toLowerCase() === roleName.toLowerCase()
+          );
+          return role ? `<@&${role.id}>` : match;
+        }
+      );
 
       const messageOptions: { content: string; reply?: { messageReference: string } } = {
         content: processedContent,
@@ -281,6 +292,14 @@ export class DiscordChannelAdapter implements ChannelAdapter {
     this.eventHandlers.delete(handler);
   }
 
+  onMessageSeen(handler: MessageSeenHandler): void {
+    this.messageSeenHandlers.add(handler);
+  }
+
+  offMessageSeen(handler: MessageSeenHandler): void {
+    this.messageSeenHandlers.delete(handler);
+  }
+
   /**
    * Get the underlying Discord client (for advanced operations)
    * This is an escape hatch for Discord-specific features not in the interface
@@ -339,6 +358,7 @@ export class DiscordChannelAdapter implements ChannelAdapter {
       })),
       replyTo: msg.reference?.messageId,
       mentionedRoles: msg.mentions.roles.map((r) => r.name),
+      mentionedUserIds: msg.mentions.users.map((u) => u.id),
     };
   }
 
@@ -366,70 +386,60 @@ export class DiscordChannelAdapter implements ChannelAdapter {
           return;
         }
 
-        // Check if this agent's role is mentioned
-        const myRoleMentioned = message.mentions.roles.some(
-          (role) => role.name === discordConfig.role
-        );
+        // Emit "message seen" event for ALL messages in readable channels
+        // This is used for tracking lastProcessedMessageId regardless of response
+        for (const handler of this.messageSeenHandlers) {
+          try {
+            await handler({ channelName, messageId: message.id });
+          } catch (error) {
+            const err = error instanceof Error ? error.message : String(error);
+            logger.error('Error in message seen handler', { error: err });
+          }
+        }
 
-        // Check if another agent's role is mentioned
-        const otherAgentMentioned = message.mentions.roles.some((role) =>
-          otherAgentRoles.includes(role.name)
-        );
+        // Convert to normalized message format
+        const normalizedMessage = this.convertMessage(message, channelName);
 
         // Check if this message is a reply to one of this agent's messages
         let isReplyToAgent = false;
         if (message.reference?.messageId && botUserId) {
           try {
-            // Try to get the referenced message
             const referencedMessage = await channel.messages.fetch(message.reference.messageId);
             isReplyToAgent = referencedMessage.author.id === botUserId;
           } catch {
-            // If we can't fetch the referenced message, assume not a reply to us
             logger.debug('Could not fetch referenced message', {
               messageId: message.reference.messageId,
             });
           }
         }
 
+        // Use shared logic to determine if we should respond
+        const { shouldRespond, isMention, otherAgentMentioned } = shouldRespondToMessage({
+          message: normalizedMessage,
+          myRole: discordConfig.role,
+          botUserId,
+          otherAgentRoles,
+          primaryChannel: discordConfig.primary,
+          onChannelMessage: discordConfig.triggers.onChannelMessage,
+          isReplyToAgent,
+        });
+
         // Debug logging
         logger.debug('Message received', {
           channel: channelName,
           author: message.author.tag,
           content: message.content.substring(0, 100),
-          mentionedRoles: message.mentions.roles.map((r) => r.name),
-          myRole: discordConfig.role,
-          myRoleMentioned,
+          isMention,
           otherAgentMentioned,
           isReplyToAgent,
-          hasReference: !!message.reference,
+          shouldRespond,
         });
 
-        // Determine if we should emit an event
-        const isPrimaryChannel = channelName === discordConfig.primary;
-        let shouldEmit = false;
-
-        if (message.author.bot) {
-          // Bot messages: only respond if this agent is explicitly mentioned
-          shouldEmit = myRoleMentioned;
-        } else {
-          // Human messages: respond to:
-          // 1. Explicit mentions
-          // 2. Replies to this agent's messages
-          // 3. Primary channel messages (if enabled and no other agent mentioned)
-          shouldEmit =
-            myRoleMentioned ||
-            isReplyToAgent ||
-            (isPrimaryChannel && discordConfig.triggers.onChannelMessage && !otherAgentMentioned);
-        }
-
-        if (shouldEmit) {
-          // Determine event type: mention takes priority, then reply, then message
-          const eventType = myRoleMentioned ? 'mention' : 'mention'; // Replies treated as mentions
-
+        if (shouldRespond) {
           const event: ChannelMessageEvent = {
-            type: eventType,
-            message: this.convertMessage(message, channelName),
-            isMention: myRoleMentioned,
+            type: isMention ? 'mention' : 'message',
+            message: normalizedMessage,
+            isMention,
             otherAgentMentioned,
             isReplyToAgent,
           };

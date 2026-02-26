@@ -2,10 +2,10 @@ import { tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import { logger } from '../logger.js';
 import { CostTracker } from '../guardrails/cost-tracker.js';
-import type { AgentContext } from '../types.js';
+import type { AgentContext, TriggerEvent } from '../types.js';
 import type { DiscordChannelAdapter } from '../../core/channels/discord/adapter.js';
 import { createDiscordMcpTools } from '../../core/channels/discord/tools.js';
-import type { ReminderManager } from '../reminders/index.js';
+import type { TaskScheduler } from '../../core/runtime/task-scheduler.js';
 import {
   runAgentLoop as runGenericAgentLoop,
   type AgentLoopConfig,
@@ -16,7 +16,7 @@ interface RunLoopOptions {
   costTracker: CostTracker;
   onStatusUpdate?: (status: string) => Promise<void>;
   sessionId?: string; // Session ID to resume, if any
-  reminderManager?: ReminderManager; // Optional reminder manager for scheduling tools
+  taskScheduler?: TaskScheduler<TriggerEvent>; // Optional task scheduler for scheduling tools
   discordAdapter?: DiscordChannelAdapter; // Discord channel adapter for MCP tools
 }
 
@@ -66,34 +66,36 @@ function createSpendTool(costTracker: CostTracker) {
   );
 }
 
-// Create Reminder tools for MCP
-function createReminderTools(reminderManager: ReminderManager) {
-  const scheduleReminderTool = tool(
-    'schedule_reminder',
-    'Schedule a reminder for yourself. Use ISO datetime for one-time reminders (e.g., "2025-01-15T09:00:00Z") or cron expressions for recurring (e.g., "0 9 * * *" for daily at 9am).',
+// Create Task Scheduler tools for MCP
+function createTaskSchedulerTools(taskScheduler: TaskScheduler<TriggerEvent>) {
+  const scheduleTaskTool = tool(
+    'schedule_task',
+    'Schedule a task for yourself. Use ISO datetime for one-time tasks (e.g., "2025-01-15T09:00:00Z") or cron expressions for recurring (e.g., "0 9 * * *" for daily at 9am). Note: You can only schedule agent tasks, not modify system tasks.',
     {
-      message: z.string().describe('The reminder message - what you want to be reminded about'),
-      when: z
+      name: z.string().describe('A short name for this task'),
+      schedule: z
         .string()
-        .describe('ISO datetime string for one-time, or cron expression for recurring'),
+        .describe('ISO datetime string for one-time tasks, or cron expression for recurring'),
+      prompt: z.string().describe('The prompt/instructions for when this task fires'),
       recurring: z
         .boolean()
         .default(false)
-        .describe('Set to true for recurring reminders using cron expression'),
+        .describe('Set to true for recurring tasks using cron expression'),
     },
     async (input) => {
       try {
-        const reminder = await reminderManager.scheduleReminder({
-          message: input.message,
-          when: input.when,
+        const task = await taskScheduler.scheduleAgentTask({
+          name: input.name,
+          schedule: input.schedule,
+          prompt: input.prompt,
           recurring: input.recurring,
         });
 
-        logger.info('Reminder scheduled via MCP tool', {
-          id: reminder.id,
-          message: reminder.message,
-          when: reminder.when,
-          recurring: reminder.recurring,
+        logger.info('Task scheduled via MCP tool', {
+          id: task.id,
+          name: task.name,
+          schedule: task.schedule,
+          recurring: task.recurring,
         });
 
         return {
@@ -102,12 +104,14 @@ function createReminderTools(reminderManager: ReminderManager) {
               type: 'text' as const,
               text: JSON.stringify({
                 success: true,
-                reminder: {
-                  id: reminder.id,
-                  message: reminder.message,
-                  when: reminder.when,
-                  recurring: reminder.recurring,
-                  createdAt: reminder.createdAt,
+                task: {
+                  id: task.id,
+                  name: task.name,
+                  schedule: task.schedule,
+                  prompt: task.prompt,
+                  recurring: task.recurring,
+                  source: task.source,
+                  createdAt: task.createdAt,
                 },
               }),
             },
@@ -115,7 +119,7 @@ function createReminderTools(reminderManager: ReminderManager) {
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        logger.error('Failed to schedule reminder', { error: errorMessage });
+        logger.error('Failed to schedule task', { error: errorMessage });
         return {
           content: [
             {
@@ -128,26 +132,31 @@ function createReminderTools(reminderManager: ReminderManager) {
     }
   );
 
-  const listRemindersTool = tool(
-    'list_reminders',
-    'List all your scheduled reminders.',
-    {},
-    async () => {
+  const listTasksTool = tool(
+    'list_tasks',
+    'List all scheduled tasks. Filter by source: "all" (default), "system" (config-defined, read-only), or "agent" (runtime-created, modifiable).',
+    {
+      source: z.enum(['all', 'system', 'agent']).default('all').describe('Filter tasks by source'),
+    },
+    async (input) => {
       try {
-        const reminders = reminderManager.listReminders();
+        const tasks = taskScheduler.listTasks(input.source);
         return {
           content: [
             {
               type: 'text' as const,
               text: JSON.stringify({
                 success: true,
-                count: reminders.length,
-                reminders: reminders.map((r) => ({
-                  id: r.id,
-                  message: r.message,
-                  when: r.when,
-                  recurring: r.recurring,
-                  createdAt: r.createdAt,
+                count: tasks.length,
+                tasks: tasks.map((t) => ({
+                  id: t.id,
+                  name: t.name,
+                  schedule: t.schedule,
+                  prompt: t.prompt.substring(0, 100) + (t.prompt.length > 100 ? '...' : ''),
+                  recurring: t.recurring,
+                  source: t.source,
+                  enabled: t.enabled,
+                  createdAt: t.createdAt,
                 })),
               }),
             },
@@ -155,7 +164,7 @@ function createReminderTools(reminderManager: ReminderManager) {
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        logger.error('Failed to list reminders', { error: errorMessage });
+        logger.error('Failed to list tasks', { error: errorMessage });
         return {
           content: [
             {
@@ -168,25 +177,25 @@ function createReminderTools(reminderManager: ReminderManager) {
     }
   );
 
-  const cancelReminderTool = tool(
-    'cancel_reminder',
-    'Cancel a scheduled reminder by its ID.',
+  const cancelTaskTool = tool(
+    'cancel_task',
+    'Cancel a scheduled task by its ID. Note: You can only cancel agent tasks, not system tasks.',
     {
-      id: z.string().describe('The reminder ID to cancel'),
+      id: z.string().describe('The task ID to cancel'),
     },
     async (input) => {
       try {
-        const cancelled = await reminderManager.cancelReminder(input.id);
+        const cancelled = await taskScheduler.cancelTask(input.id);
 
         if (cancelled) {
-          logger.info('Reminder cancelled via MCP tool', { id: input.id });
+          logger.info('Task cancelled via MCP tool', { id: input.id });
           return {
             content: [
               {
                 type: 'text' as const,
                 text: JSON.stringify({
                   success: true,
-                  message: `Reminder ${input.id} has been cancelled`,
+                  message: `Task ${input.id} has been cancelled`,
                 }),
               },
             ],
@@ -198,7 +207,7 @@ function createReminderTools(reminderManager: ReminderManager) {
                 type: 'text' as const,
                 text: JSON.stringify({
                   success: false,
-                  message: `Reminder ${input.id} not found`,
+                  message: `Task ${input.id} not found or is a system task (cannot cancel system tasks)`,
                 }),
               },
             ],
@@ -206,7 +215,7 @@ function createReminderTools(reminderManager: ReminderManager) {
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        logger.error('Failed to cancel reminder', { error: errorMessage, id: input.id });
+        logger.error('Failed to cancel task', { error: errorMessage, id: input.id });
         return {
           content: [
             {
@@ -219,7 +228,7 @@ function createReminderTools(reminderManager: ReminderManager) {
     }
   );
 
-  return [scheduleReminderTool, listRemindersTool, cancelReminderTool];
+  return [scheduleTaskTool, listTasksTool, cancelTaskTool];
 }
 
 /**
@@ -233,7 +242,7 @@ export async function runAgentLoop(
   initialPrompt: string,
   options: RunLoopOptions
 ): Promise<RunLoopResult> {
-  const { costTracker, onStatusUpdate, sessionId, reminderManager, discordAdapter } = options;
+  const { costTracker, onStatusUpdate, sessionId, taskScheduler, discordAdapter } = options;
 
   // Build MCP server configs
   const mcpServers: McpServerConfig[] = [];
@@ -248,12 +257,12 @@ export async function runAgentLoop(
     tools: discordTools,
   });
 
-  // Reminder tools (if manager provided)
-  if (reminderManager) {
-    const reminderTools = createReminderTools(reminderManager);
+  // Task scheduler tools (if scheduler provided)
+  if (taskScheduler) {
+    const taskTools = createTaskSchedulerTools(taskScheduler);
     mcpServers.push({
-      name: 'reminder-tools',
-      tools: reminderTools,
+      name: 'task-scheduler-tools',
+      tools: taskTools,
     });
   }
 
@@ -264,6 +273,7 @@ export async function runAgentLoop(
     model: context.config.model,
     claudeExecutable: context.config.claudeExecutable,
     api: context.config.api,
+    conversationTimeoutMs: context.config.runtime?.conversationTimeoutMs,
   };
 
   // Run the generic agent loop

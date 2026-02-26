@@ -39,6 +39,8 @@ export interface AgentLoopConfig {
   claudeExecutable?: string;
   /** Optional API provider configuration */
   api?: ApiConfig;
+  /** Conversation timeout in milliseconds (default: 5 minutes) */
+  conversationTimeoutMs?: number;
 }
 
 /**
@@ -173,7 +175,46 @@ export async function runAgentLoop(
     }
   }
 
-  try {
+  // Set up conversation timeout (default: 5 minutes)
+  const timeoutMs = config.conversationTimeoutMs ?? 5 * 60 * 1000;
+  let lastMessageTime = Date.now();
+  let timeoutHandle: NodeJS.Timeout | null = null;
+  let timeoutReject: ((error: Error) => void) | null = null;
+
+  // Create a promise that rejects on timeout
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutReject = reject;
+  });
+
+  // Start timeout monitoring
+  const startTimeout = () => {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+    timeoutHandle = setTimeout(() => {
+      const elapsed = Date.now() - lastMessageTime;
+      logger.error('Conversation timeout - no response from Claude', {
+        agent: config.name,
+        timeoutMs,
+        elapsedMs: elapsed,
+        lastMessageAt: new Date(lastMessageTime).toISOString(),
+      });
+      if (timeoutReject) {
+        timeoutReject(
+          new Error(`Conversation timeout after ${timeoutMs}ms - Claude did not respond`)
+        );
+      }
+    }, timeoutMs);
+  };
+
+  // Reset timeout on each message
+  const resetTimeout = () => {
+    lastMessageTime = Date.now();
+    startTimeout();
+  };
+
+  // Wrap the query loop in a promise so we can race it with timeout
+  const queryLoopPromise = async () => {
     for await (const message of query({
       prompt,
       options: {
@@ -196,6 +237,8 @@ export async function runAgentLoop(
         }),
       },
     })) {
+      // Reset timeout on every message received
+      resetTimeout();
       // Log different message types
       if (message.type === 'system' && message.subtype === 'init') {
         currentSessionId = message.session_id;
@@ -266,16 +309,54 @@ export async function runAgentLoop(
           costUsd: message.total_cost_usd?.toFixed(4),
         });
         totalCost = message.total_cost_usd || 0;
+
+        // Track token usage from SDK's actual data instead of estimating
+        // SDK provides accurate token counts per model in result.modelUsage
+        if (message.modelUsage) {
+          for (const [model, usage] of Object.entries(message.modelUsage)) {
+            const typedUsage = usage as {
+              inputTokens: number;
+              outputTokens: number;
+              costUSD: number;
+            };
+            costTracker.trackUsage(typedUsage.inputTokens, typedUsage.outputTokens, model);
+            logger.debug('📊 Token usage tracked', {
+              model,
+              inputTokens: typedUsage.inputTokens,
+              outputTokens: typedUsage.outputTokens,
+              costUSD: typedUsage.costUSD.toFixed(4),
+            });
+          }
+        } else {
+          // Fallback: If modelUsage isn't available, track at least the total cost
+          // This shouldn't happen with current SDK versions, but provides backwards compatibility
+          logger.warn('⚠️  modelUsage not available in result message, using fallback estimation');
+          const estimatedOutputTokens = Math.round((totalCost / 15) * 1_000_000);
+          costTracker.trackUsage(0, estimatedOutputTokens, config.model);
+        }
       }
     }
+  };
 
-    // Track the cost (estimate tokens from cost)
-    // Rough estimate: $3/1M input, $15/1M output for Sonnet
-    const estimatedOutputTokens = Math.round((totalCost / 15) * 1_000_000);
-    costTracker.trackUsage(0, estimatedOutputTokens, config.model);
+  try {
+    startTimeout(); // Start initial timeout
+
+    // Race the query loop against the timeout
+    await Promise.race([queryLoopPromise(), timeoutPromise]);
+
+    // Clear timeout on successful completion
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
   } catch (error) {
     const err = error instanceof Error ? error.message : String(error);
     logger.error('Agent loop error', { error: err });
+
+    // Clear timeout on error
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+
     throw error;
   }
 

@@ -2,13 +2,18 @@ import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { logger } from '../logger.js';
-import type { AgentConfig, TriggerEvent } from '../types.js';
+import type { AgentConfig, TriggerEvent, ScheduledTaskConfig } from '../types.js';
 import { getDiscordConfig, getDiscordConfigOrNull } from '../types.js';
 import { getOtherAgentRoles } from '../agent-discovery.js';
 import type { DiscordChannelAdapter } from '../../core/channels/discord/adapter.js';
-import type { ChannelMessageEvent } from '../../core/channels/types.js';
+import {
+  shouldRespondToMessage,
+  type ChannelMessage,
+  type ChannelMessageEvent,
+  type MessageSeenEvent,
+} from '../../core/channels/types.js';
 import { EventRouter, type EventRouterCallbacks } from '../../core/runtime/event-router.js';
-import { CronScheduler, type CronJobConfig } from '../../core/runtime/cron-scheduler.js';
+import { TaskScheduler, type ScheduledTask } from '../../core/runtime/task-scheduler.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -79,9 +84,10 @@ export class TriggerManager {
   private state: AgentState = {};
   private isRunning = false;
   private messageHandler: ((event: ChannelMessageEvent) => Promise<void>) | null = null;
+  private messageSeenHandler: ((event: MessageSeenEvent) => Promise<void>) | null = null;
   private discordAdapter?: DiscordChannelAdapter;
   private eventRouter: EventRouter<TriggerEvent>;
-  private cronScheduler: CronScheduler<TriggerEvent>;
+  private taskScheduler: TaskScheduler<TriggerEvent>;
 
   constructor(
     config: AgentConfig,
@@ -107,28 +113,8 @@ export class TriggerManager {
           }
         }
       },
-      onProcessed: async (event) => {
-        // Update lastProcessedMessageIds for Discord messages (per-channel tracking)
-        if (
-          (event.type === 'discord_mention' || event.type === 'discord_message') &&
-          event.payload.messageId &&
-          event.payload.channelName
-        ) {
-          const messageId = event.payload.messageId as string;
-          const channelName = event.payload.channelName as string;
-
-          // Initialize per-channel tracking if needed
-          if (!this.state.lastProcessedMessageIds) {
-            this.state.lastProcessedMessageIds = {};
-          }
-
-          const currentId = this.state.lastProcessedMessageIds[channelName];
-          if (!currentId || messageId > currentId) {
-            this.state.lastProcessedMessageIds[channelName] = messageId;
-            await saveState(this.config.name, this.state);
-          }
-        }
-      },
+      // Note: lastProcessedMessageIds is now tracked via onMessageSeen for ALL messages,
+      // not just processed ones. This prevents re-processing messages on restart.
     };
 
     this.eventRouter = new EventRouter<TriggerEvent>(onTrigger, callbacks, {
@@ -136,30 +122,38 @@ export class TriggerManager {
       maxQueueSize: 100,
     });
 
-    // Convert agent cron config to CronJobConfig format
-    const cronConfigs: CronJobConfig[] = config.cron.map((cronConfig) => ({
-      schedule: cronConfig.schedule,
-      task: cronConfig.task,
-      fireOnStart: true, // Fire immediately on startup (existing behavior)
-    }));
+    // Get scheduled task configs - use new format if available, fall back to old cron format
+    const scheduledTaskConfigs: ScheduledTaskConfig[] = config.scheduledTasks ?? [];
 
-    // Event factory to create TriggerEvent from cron config
-    const cronEventFactory = (cronConfig: CronJobConfig, immediate: boolean): TriggerEvent => ({
-      type: 'cron',
-      source: cronConfig.task,
+    // Event factory to create TriggerEvent from scheduled task
+    const taskEventFactory = (task: ScheduledTask, immediate: boolean): TriggerEvent => ({
+      type: 'scheduled_task',
+      source: task.name,
       payload: {
-        schedule: cronConfig.schedule,
+        taskId: task.id,
+        taskName: task.name,
+        taskSource: task.source,
+        prompt: task.prompt,
+        schedule: task.schedule,
         ...(immediate ? { immediate: true } : {}),
       },
       timestamp: new Date(),
     });
 
-    this.cronScheduler = new CronScheduler<TriggerEvent>(
+    this.taskScheduler = new TaskScheduler<TriggerEvent>(
+      config.name,
       this.eventRouter,
-      cronConfigs,
-      { name: `CronScheduler(${config.name})` },
-      cronEventFactory
+      scheduledTaskConfigs,
+      { defaultFireOnStart: true },
+      taskEventFactory
     );
+  }
+
+  /**
+   * Get the task scheduler for MCP tools access
+   */
+  getTaskScheduler(): TaskScheduler<TriggerEvent> {
+    return this.taskScheduler;
   }
 
   /**
@@ -181,8 +175,8 @@ export class TriggerManager {
     this.isRunning = true;
     logger.info('Starting TriggerManager', { agent: this.config.name });
 
-    // Start cron scheduler (handles all cron job setup and fire-on-start)
-    await this.cronScheduler.start();
+    // Start task scheduler (handles all scheduled task setup and fire-on-start)
+    await this.taskScheduler.start();
 
     // Set up Discord event listener if Discord is configured
     const discordConfig = getDiscordConfigOrNull(this.config);
@@ -203,18 +197,24 @@ export class TriggerManager {
 
     logger.info('Stopping TriggerManager');
 
-    // Stop cron scheduler
-    this.cronScheduler.stop();
+    // Stop task scheduler
+    this.taskScheduler.stop();
 
     for (const interval of this.pollingIntervals) {
       clearInterval(interval);
     }
     this.pollingIntervals = [];
 
-    // Remove Discord event listener using the adapter
-    if (this.messageHandler && this.discordAdapter) {
-      this.discordAdapter.offMessage(this.messageHandler);
-      this.messageHandler = null;
+    // Remove Discord event listeners using the adapter
+    if (this.discordAdapter) {
+      if (this.messageHandler) {
+        this.discordAdapter.offMessage(this.messageHandler);
+        this.messageHandler = null;
+      }
+      if (this.messageSeenHandler) {
+        this.discordAdapter.offMessageSeen(this.messageSeenHandler);
+        this.messageSeenHandler = null;
+      }
     }
 
     this.isRunning = false;
@@ -241,96 +241,70 @@ export class TriggerManager {
         this.state.lastProcessedMessageIds = {};
       }
 
+      // Get bot user ID for reply detection
+      const botUserId = this.discordAdapter.getClient()?.user?.id;
+
       // Check channels the agent can read
       for (const channelName of discordConfig.canRead) {
-        const lastProcessedId = this.state.lastProcessedMessageIds[channelName];
+        const lastSeenId = this.state.lastProcessedMessageIds[channelName];
 
-        // If no lastProcessedMessageId for this channel, initialize from latest and skip catch-up
-        if (!lastProcessedId) {
-          const latestMessages = await this.discordAdapter.readMessages({
-            channel: channelName,
-            limit: 1,
-          });
-          if (latestMessages.length > 0) {
-            this.state.lastProcessedMessageIds[channelName] =
-              latestMessages[latestMessages.length - 1].id;
-            await saveState(this.config.name, this.state);
-            logger.info('Initialized lastProcessedMessageId for channel, skipping catch-up', {
-              channel: channelName,
-              messageId: this.state.lastProcessedMessageIds[channelName],
-            });
-          }
+        // Fetch last 50 messages from the channel
+        const allMessages = await this.discordAdapter.readMessages({
+          channel: channelName,
+          limit: 50,
+        });
+
+        if (allMessages.length === 0) {
           continue;
         }
 
-        // Fetch messages after lastProcessedMessageId for this channel
-        const messages = await this.discordAdapter.readMessages({
-          channel: channelName,
-          limit: 50,
-          after: lastProcessedId,
-        });
+        // If no lastSeenId for this channel, initialize from the latest message and skip catch-up
+        if (!lastSeenId) {
+          const latestMessageId = allMessages[allMessages.length - 1].id;
+          this.state.lastProcessedMessageIds[channelName] = latestMessageId;
+          await saveState(this.config.name, this.state);
+          logger.info('Initialized lastProcessedMessageId for channel, skipping catch-up', {
+            channel: channelName,
+            messageId: latestMessageId,
+          });
+          continue;
+        }
 
-        if (messages.length === 0) {
+        // Filter to messages after lastSeenId (messages we haven't seen yet)
+        // Messages are in chronological order, so filter those with id > lastSeenId
+        const missedMessages = allMessages.filter((msg) => msg.id > lastSeenId);
+
+        if (missedMessages.length === 0) {
           continue;
         }
 
         logger.info('Catching up on missed messages', {
           channel: channelName,
-          count: messages.length,
-          afterMessageId: lastProcessedId,
+          count: missedMessages.length,
+          afterMessageId: lastSeenId,
         });
 
-        // Get bot user ID for reply detection
-        const botUserId = this.discordAdapter.getClient()?.user?.id;
-
-        // Messages are already in chronological order from the adapter
-        for (const message of messages) {
-          // Check if this agent's role is mentioned
-          const myRoleMentioned = message.mentionedRoles?.includes(discordConfig.role) ?? false;
-
-          // Check if another agent's role is mentioned
-          const otherAgentMentioned =
-            message.mentionedRoles?.some((role) => otherAgentRoles.includes(role)) ?? false;
+        // Process missed messages in chronological order
+        for (const message of missedMessages) {
+          // Mark message as seen (update lastProcessedMessageId)
+          await this.updateLastProcessedMessageId(channelName, message.id);
 
           // Check if this message is a reply to one of this agent's messages
-          let isReplyToAgent = false;
-          if (message.replyTo && botUserId) {
-            try {
-              // Fetch the referenced message to check if it's from us
-              const referencedMessage = await this.discordAdapter.fetchMessage(
-                channelName,
-                message.replyTo
-              );
-              if (referencedMessage) {
-                isReplyToAgent = referencedMessage.author.id === botUserId;
-              }
-            } catch {
-              // Ignore fetch errors - reply detection will fail gracefully
-              logger.debug('Could not fetch referenced message for catch-up', {
-                messageId: message.replyTo,
-              });
-            }
-          }
+          const isReplyToAgent = await this.checkIsReplyToAgent(message, channelName, botUserId);
 
-          // Determine if we should respond
-          // For bot messages: ONLY respond if explicitly mentioned (enables agent-to-agent communication)
-          // For human messages: respond to mentions, replies to agent, OR primary channel (unless another agent is mentioned)
-          const isPrimaryChannel = channelName === discordConfig.primary;
-          let shouldRespond = false;
-
-          if (message.author.isBot) {
-            // Bot messages: only respond if this agent is explicitly mentioned
-            shouldRespond = myRoleMentioned;
-          } else {
-            // Human messages: respond to mentions, replies, OR primary channel (unless another agent is mentioned)
-            shouldRespond =
-              myRoleMentioned ||
-              isReplyToAgent ||
-              (isPrimaryChannel && discordConfig.triggers.onChannelMessage && !otherAgentMentioned);
-          }
+          // Use shared logic to determine if we should respond
+          const { shouldRespond, isMention } = shouldRespondToMessage({
+            message,
+            myRole: discordConfig.role,
+            botUserId,
+            otherAgentRoles,
+            primaryChannel: discordConfig.primary,
+            onChannelMessage: discordConfig.triggers.onChannelMessage,
+            isReplyToAgent,
+          });
 
           if (shouldRespond) {
-            const triggerType = myRoleMentioned ? 'discord_mention' : 'discord_message';
+            const triggerType = isMention ? 'discord_mention' : 'discord_message';
             logger.info(`Catch-up: ${triggerType} detected`, {
               channel: channelName,
               messageId: message.id,
@@ -361,11 +335,44 @@ export class TriggerManager {
     }
   }
 
+  /**
+   * Check if a message is a reply to one of this agent's messages
+   */
+  private async checkIsReplyToAgent(
+    message: ChannelMessage,
+    channelName: string,
+    botUserId?: string
+  ): Promise<boolean> {
+    if (!message.replyTo || !botUserId || !this.discordAdapter) {
+      return false;
+    }
+
+    try {
+      const referencedMessage = await this.discordAdapter.fetchMessage(
+        channelName,
+        message.replyTo
+      );
+      return referencedMessage?.author.id === botUserId;
+    } catch {
+      logger.debug('Could not fetch referenced message for catch-up', {
+        messageId: message.replyTo,
+      });
+      return false;
+    }
+  }
+
   private async setupDiscordEvents(): Promise<void> {
     if (!this.discordAdapter) {
       logger.warn('No Discord adapter provided, skipping Discord event setup');
       return;
     }
+
+    // Register handler for ALL messages seen (for tracking lastProcessedMessageIds)
+    // This fires for every message in readable channels, not just ones we respond to
+    this.messageSeenHandler = async (event: MessageSeenEvent) => {
+      await this.updateLastProcessedMessageId(event.channelName, event.messageId);
+    };
+    this.discordAdapter.onMessageSeen(this.messageSeenHandler);
 
     // The adapter handles all the filtering logic (mentions, channels, etc.)
     // We just need to convert the ChannelMessageEvent to a TriggerEvent
@@ -407,5 +414,25 @@ export class TriggerManager {
       onChannelMessage: discordConfig.triggers.onChannelMessage,
       primaryChannel: discordConfig.primary,
     });
+  }
+
+  /**
+   * Update lastProcessedMessageId for a channel
+   * Only updates if the new messageId is greater than the current one
+   */
+  private async updateLastProcessedMessageId(
+    channelName: string,
+    messageId: string
+  ): Promise<void> {
+    // Initialize per-channel tracking if needed
+    if (!this.state.lastProcessedMessageIds) {
+      this.state.lastProcessedMessageIds = {};
+    }
+
+    const currentId = this.state.lastProcessedMessageIds[channelName];
+    if (!currentId || messageId > currentId) {
+      this.state.lastProcessedMessageIds[channelName] = messageId;
+      await saveState(this.config.name, this.state);
+    }
   }
 }

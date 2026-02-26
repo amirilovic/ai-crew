@@ -14,12 +14,13 @@ export {
 } from './event-router.js';
 
 export {
-  CronScheduler,
-  createCronScheduler,
-  type CronJobConfig,
-  type CronSchedulerConfig,
-  type CronEvent,
-} from './cron-scheduler.js';
+  TaskScheduler,
+  createTaskScheduler,
+  type ScheduledTaskConfig,
+  type ScheduledTask,
+  type ScheduledTaskEvent,
+  type ScheduleTaskInput,
+} from './task-scheduler.js';
 
 export {
   runAgentLoop,
@@ -32,12 +33,9 @@ export {
 export {
   buildPromptFromTrigger,
   buildJournalContext,
-  buildCronPrompt,
+  buildScheduledTaskPrompt,
   buildDiscordPrompt,
-  buildReminderPrompt,
   getPromptVariables,
   substituteVariables,
-  findCronPrompt,
-  type CronPromptConfig,
   type PromptVariables,
 } from './prompt-builder.js';

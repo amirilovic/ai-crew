@@ -2,12 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   buildPromptFromTrigger,
   buildJournalContext,
-  buildCronPrompt,
+  buildScheduledTaskPrompt,
   buildDiscordPrompt,
-  buildReminderPrompt,
   getPromptVariables,
   substituteVariables,
-  findCronPrompt,
 } from '../core/runtime/prompt-builder.js';
 import type { AgentConfig, TriggerEvent } from '../shared/types.js';
 
@@ -27,7 +25,7 @@ describe('PromptBuilder', () => {
   });
 
   const createMockConfig = (
-    cronOverrides?: Array<{ schedule: string; task: string; prompt?: string }>
+    scheduledTasks?: Array<{ name: string; schedule: string; prompt: string }>
   ): AgentConfig => ({
     name: 'test-agent',
     displayName: 'Test Agent',
@@ -42,7 +40,9 @@ describe('PromptBuilder', () => {
         triggers: { onMention: true, onChannelMessage: false },
       },
     ],
-    cron: cronOverrides ?? [{ schedule: '*/15 * * * *', task: 'check_board' }],
+    scheduledTasks: scheduledTasks ?? [
+      { name: 'check_board', schedule: '*/15 * * * *', prompt: 'Check the board' },
+    ],
     limits: { maxDailyCostUsd: 100, cooldownMinutes: 5 },
     escalatesTo: null,
   });
@@ -90,74 +90,59 @@ describe('PromptBuilder', () => {
     });
   });
 
-  describe('findCronPrompt', () => {
-    it('returns prompt from config when present', () => {
-      const config = createMockConfig([
-        { schedule: '*/15 * * * *', task: 'check_board', prompt: 'Custom board prompt' },
-      ]);
-      const prompt = findCronPrompt(config, 'check_board');
-      expect(prompt).toBe('Custom board prompt');
-    });
-
-    it('returns undefined when task not found', () => {
-      const config = createMockConfig();
-      const prompt = findCronPrompt(config, 'nonexistent_task');
-      expect(prompt).toBeUndefined();
-    });
-
-    it('returns undefined when prompt not set', () => {
-      const config = createMockConfig([
-        { schedule: '*/15 * * * *', task: 'check_board' }, // No prompt field
-      ]);
-      const prompt = findCronPrompt(config, 'check_board');
-      expect(prompt).toBeUndefined();
-    });
-  });
-
-  describe('buildCronPrompt', () => {
-    it('uses custom prompt from config when available', () => {
-      const config = createMockConfig([
-        { schedule: '*/15 * * * *', task: 'custom_task', prompt: 'Do something on {date}' },
-      ]);
+  describe('buildScheduledTaskPrompt', () => {
+    it('uses prompt from event payload', () => {
+      const event: TriggerEvent = {
+        type: 'scheduled_task',
+        source: 'check_board',
+        payload: {
+          taskId: 'system-check_board',
+          taskName: 'check_board',
+          taskSource: 'system',
+          prompt: 'Check the project board on {date}',
+          schedule: '*/15 * * * *',
+        },
+        timestamp: new Date(),
+      };
       const variables = getPromptVariables('test-agent');
-      const prompt = buildCronPrompt(config, 'custom_task', variables);
-      expect(prompt).toBe('Do something on 2026-02-21');
+      const prompt = buildScheduledTaskPrompt(event, variables);
+      expect(prompt).toBe('Check the project board on 2026-02-21');
     });
 
-    it('falls back to default prompt for check_board', () => {
-      const config = createMockConfig();
+    it('uses generic fallback when no prompt in payload', () => {
+      const event: TriggerEvent = {
+        type: 'scheduled_task',
+        source: 'unknown_task',
+        payload: {
+          taskId: 'system-unknown',
+          taskName: 'unknown_task',
+          taskSource: 'system',
+          schedule: '*/15 * * * *',
+          // No prompt field
+        },
+        timestamp: new Date(),
+      };
       const variables = getPromptVariables('test-agent');
-      const prompt = buildCronPrompt(config, 'check_board', variables);
-      expect(prompt).toContain('Time to check the project board');
-      expect(prompt).toContain('Check for failing PRs');
-    });
-
-    it('falls back to default prompt for check_mentions', () => {
-      const config = createMockConfig();
-      const variables = getPromptVariables('test-agent');
-      const prompt = buildCronPrompt(config, 'check_mentions', variables);
-      expect(prompt).toContain('Time to check Discord channels');
-    });
-
-    it('falls back to default prompt for check_reviews', () => {
-      const config = createMockConfig();
-      const variables = getPromptVariables('test-agent');
-      const prompt = buildCronPrompt(config, 'check_reviews', variables);
-      expect(prompt).toContain('Time to check for PRs needing code review');
-    });
-
-    it('falls back to default prompt for check_prs', () => {
-      const config = createMockConfig();
-      const variables = getPromptVariables('test-agent');
-      const prompt = buildCronPrompt(config, 'check_prs', variables);
-      expect(prompt).toContain('Time to check for PRs needing QA testing');
-    });
-
-    it('uses generic fallback for unknown tasks', () => {
-      const config = createMockConfig();
-      const variables = getPromptVariables('test-agent');
-      const prompt = buildCronPrompt(config, 'unknown_task', variables);
+      const prompt = buildScheduledTaskPrompt(event, variables);
       expect(prompt).toContain('Scheduled task triggered: unknown_task');
+    });
+
+    it('substitutes variables in prompt', () => {
+      const event: TriggerEvent = {
+        type: 'scheduled_task',
+        source: 'daily_check',
+        payload: {
+          taskId: 'system-daily',
+          taskName: 'daily_check',
+          taskSource: 'system',
+          prompt: 'Date: {date}, Time: {time}, Agent: {agentName}',
+          schedule: '0 9 * * *',
+        },
+        timestamp: new Date(),
+      };
+      const variables = getPromptVariables('my-agent');
+      const prompt = buildScheduledTaskPrompt(event, variables);
+      expect(prompt).toBe(`Date: 2026-02-21, Time: ${expectedTime}, Agent: my-agent`);
     });
   });
 
@@ -177,40 +162,6 @@ describe('PromptBuilder', () => {
       expect(prompt).toContain('#development');
       expect(prompt).toContain('User#1234');
       expect(prompt).toContain('Hello agent!');
-    });
-  });
-
-  describe('buildReminderPrompt', () => {
-    it('includes reminder message and recurring status', () => {
-      const event: TriggerEvent = {
-        type: 'reminder',
-        source: 'reminder-manager',
-        payload: {
-          message: 'Check the backlog',
-          recurring: false,
-        },
-        timestamp: new Date(),
-      };
-      const variables = getPromptVariables('test-agent');
-      const prompt = buildReminderPrompt(event, variables);
-      expect(prompt).toContain('Check the backlog');
-      expect(prompt).toContain('one-time');
-    });
-
-    it('indicates recurring reminder', () => {
-      const event: TriggerEvent = {
-        type: 'reminder',
-        source: 'reminder-manager',
-        payload: {
-          message: 'Daily standup',
-          recurring: true,
-        },
-        timestamp: new Date(),
-      };
-      const variables = getPromptVariables('test-agent');
-      const prompt = buildReminderPrompt(event, variables);
-      expect(prompt).toContain('Daily standup');
-      expect(prompt).toContain('recurring');
     });
   });
 
@@ -242,43 +193,22 @@ describe('PromptBuilder', () => {
       expect(prompt).toContain('Colleague');
     });
 
-    it('builds prompt for cron event with config prompt', () => {
-      const config = createMockConfig([
-        { schedule: '*/5 * * * *', task: 'custom_check', prompt: 'Custom prompt for {date}' },
-      ]);
-      const event: TriggerEvent = {
-        type: 'cron',
-        source: 'custom_check',
-        payload: {},
-        timestamp: new Date(),
-      };
-      const prompt = buildPromptFromTrigger(event, config);
-      expect(prompt).toContain('Custom prompt for 2026-02-21');
-    });
-
-    it('builds prompt for cron event with default prompt', () => {
+    it('builds prompt for scheduled_task event', () => {
       const config = createMockConfig();
       const event: TriggerEvent = {
-        type: 'cron',
+        type: 'scheduled_task',
         source: 'check_board',
-        payload: {},
+        payload: {
+          taskId: 'system-check_board',
+          taskName: 'check_board',
+          taskSource: 'system',
+          prompt: 'Time to check the board on {date}',
+          schedule: '*/15 * * * *',
+        },
         timestamp: new Date(),
       };
       const prompt = buildPromptFromTrigger(event, config);
-      expect(prompt).toContain('Time to check the project board');
-    });
-
-    it('builds prompt for reminder event', () => {
-      const config = createMockConfig();
-      const event: TriggerEvent = {
-        type: 'reminder',
-        source: 'reminder-manager',
-        payload: { message: 'Follow up', recurring: false },
-        timestamp: new Date(),
-      };
-      const prompt = buildPromptFromTrigger(event, config);
-      expect(prompt).toContain('Reminder');
-      expect(prompt).toContain('Follow up');
+      expect(prompt).toContain('Time to check the board on 2026-02-21');
     });
 
     it('handles unknown event types', () => {

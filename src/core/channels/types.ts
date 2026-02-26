@@ -26,6 +26,68 @@ export interface ChannelMessage {
   replyTo?: string;
   /** Role mentions in the message (e.g., ['dev', 'po']) */
   mentionedRoles: string[];
+  /** User ID mentions in the message */
+  mentionedUserIds: string[];
+}
+
+/**
+ * Context needed to determine if we should respond to a message
+ */
+export interface ShouldRespondContext {
+  message: ChannelMessage;
+  myRole: string;
+  botUserId?: string;
+  otherAgentRoles: string[];
+  primaryChannel: string;
+  onChannelMessage: boolean;
+  isReplyToAgent: boolean;
+}
+
+/**
+ * Result of shouldRespondToMessage check
+ */
+export interface ShouldRespondResult {
+  shouldRespond: boolean;
+  isMention: boolean;
+  otherAgentMentioned: boolean;
+}
+
+/**
+ * Determine if we should respond to a message.
+ * Shared logic used by both live message handling and catch-up.
+ */
+export function shouldRespondToMessage(ctx: ShouldRespondContext): ShouldRespondResult {
+  const {
+    message,
+    myRole,
+    botUserId,
+    otherAgentRoles,
+    primaryChannel,
+    onChannelMessage,
+    isReplyToAgent,
+  } = ctx;
+
+  // Check if this agent's role is mentioned
+  const myRoleMentioned = message.mentionedRoles.includes(myRole);
+
+  // Check if this agent's user ID is mentioned (e.g., @BotName)
+  const myUserMentioned = botUserId ? message.mentionedUserIds.includes(botUserId) : false;
+
+  // Combined mention check
+  const isMention = myRoleMentioned || myUserMentioned;
+
+  // Check if another agent's role is mentioned
+  const otherAgentMentioned = message.mentionedRoles.some((role) => otherAgentRoles.includes(role));
+
+  const isPrimaryChannel = message.channelName === primaryChannel;
+
+  // Bot messages: only respond if this agent is explicitly mentioned
+  // Human messages: respond to mentions, replies, or primary channel (unless another agent mentioned)
+  const shouldRespond = message.author.isBot
+    ? isMention
+    : isMention || isReplyToAgent || (isPrimaryChannel && onChannelMessage && !otherAgentMentioned);
+
+  return { shouldRespond, isMention, otherAgentMentioned };
 }
 
 /**
@@ -121,6 +183,20 @@ export interface ChannelMessageEvent {
 export type ChannelEventHandler = (event: ChannelMessageEvent) => Promise<void>;
 
 /**
+ * Event emitted for every message seen in readable channels
+ * Used for tracking lastProcessedMessageId regardless of whether we respond
+ */
+export interface MessageSeenEvent {
+  channelName: string;
+  messageId: string;
+}
+
+/**
+ * Handler for message seen events (for tracking purposes)
+ */
+export type MessageSeenHandler = (event: MessageSeenEvent) => Promise<void>;
+
+/**
  * Channel Adapter Interface
  *
  * Implement this interface to add support for a new communication platform.
@@ -165,7 +241,7 @@ export interface ChannelAdapter {
   addReaction(options: AddReactionOptions): Promise<SendMessageResult>;
 
   /**
-   * Subscribe to channel events
+   * Subscribe to channel events (filtered - only events that should trigger responses)
    */
   onMessage(handler: ChannelEventHandler): void;
 
@@ -173,6 +249,17 @@ export interface ChannelAdapter {
    * Unsubscribe from channel events
    */
   offMessage(handler: ChannelEventHandler): void;
+
+  /**
+   * Subscribe to all messages seen in readable channels (for tracking purposes)
+   * This fires for EVERY message, not just ones that trigger responses
+   */
+  onMessageSeen?(handler: MessageSeenHandler): void;
+
+  /**
+   * Unsubscribe from message seen events
+   */
+  offMessageSeen?(handler: MessageSeenHandler): void;
 }
 
 /**

@@ -15,7 +15,7 @@
       }
     }
   ],
-  "cron": [],
+  "scheduledTasks": [],
   "limits": {
     "maxDailyCostUsd": 150,
     "cooldownMinutes": 5

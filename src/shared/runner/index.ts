@@ -6,7 +6,6 @@ import { ChannelType, TextChannel, Message } from 'discord.js';
 import { logger } from '../logger.js';
 import { CostTracker } from '../guardrails/cost-tracker.js';
 import { CooldownManager } from '../guardrails/cooldown.js';
-import { ReminderManager } from '../reminders/index.js';
 import { TriggerManager, loadState, saveState } from './triggers.js';
 import { runAgentLoop } from './loop.js';
 import { loadAgentEnv } from '../../config/environment.js';
@@ -32,7 +31,6 @@ export interface LoadedAgent {
   costTracker: CostTracker;
   cooldownManager: CooldownManager;
   triggerManager: TriggerManager;
-  reminderManager: ReminderManager;
   discordAdapter: DiscordChannelAdapter;
 }
 
@@ -72,10 +70,8 @@ export async function loadAgent(agentName: string): Promise<LoadedAgent> {
   });
 
   // Create trigger manager with adapter (handler will be set by startAgent)
+  // TaskScheduler is now integrated into TriggerManager
   const triggerManager = new TriggerManager(config, async () => {}, discordAdapter);
-
-  // Create reminder manager
-  const reminderManager = new ReminderManager(agentName);
 
   logger.info('Agent loaded successfully', {
     agentName,
@@ -88,7 +84,6 @@ export async function loadAgent(agentName: string): Promise<LoadedAgent> {
     costTracker,
     cooldownManager,
     triggerManager,
-    reminderManager,
     discordAdapter,
   };
 }
@@ -227,7 +222,7 @@ export async function startAgent(agent: LoadedAgent): Promise<void> {
         costTracker: agent.costTracker,
         onStatusUpdate,
         sessionId: agentState.sessionId, // Resume previous session if exists
-        reminderManager: agent.reminderManager, // Enable reminder MCP tools
+        taskScheduler: agent.triggerManager.getTaskScheduler(), // Enable task scheduling MCP tools
         discordAdapter: agent.discordAdapter, // Enable Discord MCP tools
       });
 
@@ -240,9 +235,12 @@ export async function startAgent(agent: LoadedAgent): Promise<void> {
       });
 
       // Save session ID for next run
+      // IMPORTANT: Reload state first to avoid overwriting TriggerManager's updates
+      // (TriggerManager updates lastProcessedMessageIds independently)
       if (result.sessionId) {
-        agentState.sessionId = result.sessionId;
-        await saveState(agent.config.name, agentState);
+        const currentState = await loadState(agent.config.name);
+        currentState.sessionId = result.sessionId;
+        await saveState(agent.config.name, currentState);
         logger.info('Session state saved', { sessionId: result.sessionId });
       }
 
@@ -289,12 +287,9 @@ export async function startAgent(agent: LoadedAgent): Promise<void> {
   };
 
   // Create new trigger manager with handler and adapter
+  // TaskScheduler is integrated into TriggerManager and starts automatically
   agent.triggerManager = new TriggerManager(agent.config, handleTrigger, agent.discordAdapter);
   await agent.triggerManager.start();
-
-  // Start reminder manager with same handler
-  agent.reminderManager.setHandler(handleTrigger);
-  await agent.reminderManager.start();
 
   // Set up periodic update checks (every 10 minutes)
   const updateIntervalMs = 10 * 60 * 1000; // 10 minutes
@@ -309,7 +304,6 @@ export async function startAgent(agent: LoadedAgent): Promise<void> {
     logger.info('Received SIGINT, shutting down...');
     clearInterval(updateInterval);
     agent.triggerManager.stop();
-    agent.reminderManager.stop();
     await agent.discordAdapter.disconnect();
     process.exit(0);
   });
@@ -318,7 +312,6 @@ export async function startAgent(agent: LoadedAgent): Promise<void> {
     logger.info('Received SIGTERM, shutting down...');
     clearInterval(updateInterval);
     agent.triggerManager.stop();
-    agent.reminderManager.stop();
     await agent.discordAdapter.disconnect();
     process.exit(0);
   });
@@ -333,4 +326,3 @@ function extractTicketId(event: TriggerEvent): string | null {
 
 export { runAgentLoop } from './loop.js';
 export { TriggerManager } from './triggers.js';
-export { ReminderManager } from '../reminders/index.js';

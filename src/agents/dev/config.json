@@ -15,10 +15,11 @@
       }
     }
   ],
-  "cron": [
+  "scheduledTasks": [
     {
+      "name": "check_board",
       "schedule": "*/15 * * * *",
-      "task": "check_board"
+      "prompt": "Time to check the project board and continue your work.\n\n## Steps:\n1. **Check for failing PRs first**:\n   `gh pr list --json number,title,statusCheckRollup --jq '.[] | select(.statusCheckRollup[]?.conclusion == \"FAILURE\")'`\n   Fix any failing builds before starting new work.\n\n2. **Check the board**: `gh project item-list` to see tickets\n3. **Priority**: \"In Progress\" tickets first, then \"Ready for Dev\"\n4. **Read the issue**: `gh issue view {number} --json body,comments`\n   - Look for \"Implementation Plan\" - your roadmap\n   - Look for \"Progress Update\" - where you left off\n5. **Continue or start**: Pick up where the last progress update ended\n6. **Save progress**: After each major step, comment on the issue with your progress\n\nWork on ONE ticket at a time. Fix failing PRs first, then continue board work."
     }
   ],
   "limits": {

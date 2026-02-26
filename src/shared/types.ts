@@ -54,16 +54,24 @@ export interface TelegramChannelConfig {
 export type ChannelConfig = DiscordChannelConfig | SlackChannelConfig | TelegramChannelConfig;
 
 // =============================================================================
-// Cron Configuration
+// Scheduled Task Configuration
 // =============================================================================
 
-export interface CronConfig {
-  /** Cron schedule expression (e.g., "0/15 * * * *") */
+/**
+ * Configuration for scheduled tasks (in agent config.json)
+ * These are "system tasks" - git-tracked and read-only at runtime
+ */
+export interface ScheduledTaskConfig {
+  /** Human-readable name for the task */
+  name: string;
+  /** Cron expression (e.g., "0/15 * * * *" for every 15 minutes) */
   schedule: string;
-  /** Task identifier (e.g., "check_board", "check_prs") */
-  task: string;
-  /** Optional custom prompt template with {variable} support */
-  prompt?: string;
+  /** Full prompt text - no hard-coded lookups! */
+  prompt: string;
+  /** Whether task is enabled (default: true) */
+  enabled?: boolean;
+  /** Run immediately on startup (default: true) */
+  fireOnStart?: boolean;
 }
 
 // =============================================================================
@@ -98,8 +106,8 @@ export interface AgentConfig {
   claudeExecutable?: string;
   /** Channel configurations (Discord, Slack, etc.) */
   channels: ChannelConfig[];
-  /** Cron job configurations */
-  cron: CronConfig[];
+  /** Scheduled task configurations */
+  scheduledTasks?: ScheduledTaskConfig[];
   /** Resource limits */
   limits: {
     maxDailyCostUsd: number;
@@ -109,6 +117,11 @@ export interface AgentConfig {
   escalatesTo: string | null;
   /** Optional API provider configuration (defaults to Anthropic) */
   api?: ApiProviderConfig;
+  /** Optional runtime configuration */
+  runtime?: {
+    /** Conversation timeout in milliseconds (default: 300000 = 5 minutes) */
+    conversationTimeoutMs?: number;
+  };
 }
 
 // =============================================================================
@@ -144,32 +157,11 @@ export function hasDiscordChannel(config: AgentConfig): boolean {
 }
 
 // =============================================================================
-// Backward Compatibility Helpers (to be removed in future)
-// =============================================================================
-
-/**
- * @deprecated Use getDiscordConfig(config).role instead
- */
-export function getDiscordRole(config: AgentConfig): string {
-  return getDiscordConfig(config).role;
-}
-
-/**
- * @deprecated Use getDiscordConfig(config).triggers instead
- */
-export function getDiscordTriggers(config: AgentConfig): {
-  onMention: boolean;
-  onChannelMessage: boolean;
-} {
-  return getDiscordConfig(config).triggers;
-}
-
-// =============================================================================
 // Event Types
 // =============================================================================
 
 export interface TriggerEvent {
-  type: 'discord_mention' | 'discord_message' | 'github_pr_comment' | 'cron' | 'reminder';
+  type: 'discord_mention' | 'discord_message' | 'github_pr_comment' | 'scheduled_task';
   source: string;
   payload: Record<string, unknown>;
   timestamp: Date;
